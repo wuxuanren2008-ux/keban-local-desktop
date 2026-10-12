@@ -76,6 +76,7 @@ jobs:
           APP="$(find release -maxdepth 2 -name '*.app' -type d | head -1)"
           export LECTURE_APP_EXE="$PWD/$APP/Contents/MacOS/课伴macOS"
           export LECTURE_ASR_VERIFY=1
+          export LECTURE_CAPTURE_VERIFY=1
           export LECTURE_TEST_MODEL='${{ matrix.model }}'
           node scripts/desktop-smoke.cjs 2>&1 | tee test-results/packaged-smoke.txt
           grep '^PASS:' test-results/packaged-smoke.txt

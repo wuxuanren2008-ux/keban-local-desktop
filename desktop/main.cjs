@@ -27,7 +27,7 @@ async function start(){
   ipcMain.handle('lecture:install-ollama',async event=>{trusted(event);return setup.install(data)});
   ipcMain.handle('lecture:setup-progress',event=>{trusted(event);return setup.progress()});
   ipcMain.handle('lecture:platform',event=>{trusted(event);return{platform:process.platform,arch:process.arch,supportedAsrDevices:paths.supportedAsrDevices}});
-  ipcMain.handle('lecture:microphone',async event=>{trusted(event);if(process.platform!=='darwin')return true;const current=systemPreferences.getMediaAccessStatus('microphone');return current==='granted'||(current==='not-determined'&&await systemPreferences.askForMediaAccess('microphone'))});
+  ipcMain.handle('lecture:microphone',async event=>{trusted(event);if(process.platform!=='darwin'||app.commandLine.hasSwitch('use-fake-device-for-media-stream'))return true;const current=systemPreferences.getMediaAccessStatus('microphone');return current==='granted'||(current==='not-determined'&&await systemPreferences.askForMediaAccess('microphone'))});
   const executable=paths.executable;
   const web=paths.web;
   const args=paths.args;

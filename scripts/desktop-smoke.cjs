@@ -5,7 +5,9 @@ const path=require('node:path');
 const fs=require('node:fs');
 (async()=>{
   const root=path.resolve(__dirname,'..'),data=path.join(root,'test-results',process.env.LECTURE_APP_EXE?'packaged-profile':'desktop-profile');fs.mkdirSync(data,{recursive:true});
-  const app=await _electron.launch({executablePath:process.env.LECTURE_APP_EXE||require('electron'),args:process.env.LECTURE_APP_EXE?[]:[root],env:{...process.env,HF_HUB_OFFLINE:'1',LECTURE_TEST_DATA:data}});
+  const args=process.env.LECTURE_APP_EXE?[]:[root];
+  if(process.env.LECTURE_CAPTURE_VERIFY==='1')args.push('--use-fake-device-for-media-stream','--use-file-for-fake-audio-capture='+path.join(root,'test-results/fake-microphone.wav'));
+  const app=await _electron.launch({executablePath:process.env.LECTURE_APP_EXE||require('electron'),args,env:{...process.env,HF_HUB_OFFLINE:'1',LECTURE_TEST_DATA:data}});
   const page=await app.firstWindow();const errors=[];page.on('pageerror',e=>errors.push(e.message));
   try{
     await page.waitForFunction(()=>document.querySelector('#courseSelect')?.options.length>0&&$('reliabilityStatus').textContent.includes('首次'),null,{timeout:60000});
@@ -25,6 +27,16 @@ const fs=require('node:fs');
     await page.locator('#addCourse').click();await page.locator('#courseName').fill('Desktop QA · Economics');await page.locator('#createCourse').click();await page.waitForFunction(()=>!document.querySelector('#courseDialog').open);
     const course=await page.evaluate(()=>window.localCourseId);
     console.log('course created');
+    if(process.env.LECTURE_CAPTURE_VERIFY==='1'){
+      await page.locator('#title').fill('Synthetic recorded classroom');await page.locator('#start').click();
+      await page.waitForFunction(()=>active&&recorder?.state==='recording',null,{timeout:30000});
+      await page.waitForTimeout(12000);await page.locator('#stop').click();
+      await page.waitForFunction(()=>!recognition?.closing&&items.length>0&&items.every(x=>!x._translating),null,{timeout:300000});
+      const recording=await page.evaluate(async()=>{await window.localFlush();const response=await fetch('/api/lectures/'+studioId,{headers:{'X-Lecture-Token':window.localToken}});const row=await response.json();const audio=await fetch('/api/lectures/'+studioId+'/audio',{headers:{'X-Lecture-Token':window.localToken}});return{saved:row.hasAudio,bytes:(await audio.arrayBuffer()).byteLength,text:items.map(x=>x.text).join(' ')}});
+      assert.ok(recording.saved&&recording.bytes>1000,JSON.stringify(recording));assert.ok(recording.text.toLowerCase().includes('opportunity cost'),recording.text);
+      console.log('PASS capture: synthetic microphone, AudioWorklet, live Whisper/LLM, MediaRecorder and disk recording');
+      await page.locator('#newClass').click();await page.waitForFunction(()=>items.length===0);
+    }
     await page.evaluate(()=>{$('title').value='Week 1 · Opportunity cost';items=[{text:'Opportunity cost is the value of the next best alternative forgone.',translation:'机会成本是放弃的次佳选择的价值。',time:'00:00',code:'en-US',lang:'英语'}];render();});
     await page.evaluate(()=>window.localFlush());
     console.log('lecture saved');
