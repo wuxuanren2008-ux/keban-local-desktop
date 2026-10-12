@@ -28,6 +28,15 @@ const fs=require('node:fs');
     const course=await page.evaluate(()=>window.localCourseId);
     console.log('course created');
     if(process.env.LECTURE_CAPTURE_VERIFY==='1'){
+      const input=fs.readFileSync(path.join(root,'test-results/fake-microphone.wav')).toString('base64');
+      await page.evaluate(async encoded=>{
+        const context=new AudioContext({sampleRate:48000});if(typeof context.setSinkId==='function')await context.setSinkId({type:'none'});
+        const bytes=Uint8Array.from(atob(encoded),char=>char.charCodeAt(0));const buffer=await context.decodeAudioData(bytes.buffer);
+        const destination=context.createMediaStreamDestination(),source=context.createBufferSource();source.buffer=buffer;source.loop=true;source.connect(destination);
+        await context.resume();source.start();window.__syntheticCaptureContext=context;
+        // Test-only substitute for the VM's silent microphone; never used by the shipped app.
+        navigator.mediaDevices.getUserMedia=async()=>destination.stream;
+      },input);
       await page.locator('#title').fill('Synthetic recorded classroom');await page.locator('#start').click();
       await page.waitForFunction(()=>active&&recorder?.state==='recording',null,{timeout:30000});
       await page.waitForFunction(()=>recognition?.node,null,{timeout:30000});
@@ -38,7 +47,8 @@ const fs=require('node:fs');
       await page.waitForFunction(()=>!recognition?.closing&&items.length>0&&items.every(x=>!x._translating),null,{timeout:300000});
       const recording=await page.evaluate(async()=>{await window.localFlush();const response=await fetch('/api/lectures/'+studioId,{headers:{'X-Lecture-Token':window.localToken}});const row=await response.json();const audio=await fetch('/api/lectures/'+studioId+'/audio',{headers:{'X-Lecture-Token':window.localToken}});return{saved:row.hasAudio,bytes:(await audio.arrayBuffer()).byteLength,text:items.map(x=>x.text).join(' ')}});
       assert.ok(recording.saved&&recording.bytes>1000,JSON.stringify(recording));assert.ok(recording.text.toLowerCase().includes('opportunity cost'),recording.text);
-      console.log('PASS capture: synthetic microphone, AudioWorklet, live Whisper/LLM, MediaRecorder and disk recording');
+      console.log('PASS capture: synthetic MediaStream, AudioWorklet, live Whisper/LLM, MediaRecorder and disk recording');
+      await page.evaluate(()=>window.__syntheticCaptureContext.close());
       await page.locator('#newClass').click();await page.waitForFunction(()=>items.length===0);
     }
     await page.evaluate(()=>{$('title').value='Week 1 · Opportunity cost';items=[{text:'Opportunity cost is the value of the next best alternative forgone.',translation:'机会成本是放弃的次佳选择的价值。',time:'00:00',code:'en-US',lang:'英语'}];render();});
