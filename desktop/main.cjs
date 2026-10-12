@@ -6,6 +6,7 @@ const {spawn} = require('node:child_process');
 const {randomBytes} = require('node:crypto');
 const path = require('node:path');
 const fs = require('node:fs');
+const os=require('node:os');
 if(process.env.LECTURE_TEST_DATA)app.setPath('userData',process.env.LECTURE_TEST_DATA);
 let runtime, window, stopping=false, allowClose=false, closing=false;
 const origin='http://127.0.0.1:8766';
@@ -32,7 +33,8 @@ async function start(){
   const args=paths.args;
   args.push('--web-dir',web,'--data-dir',data,'--port','8766');
   const log=fs.openSync(path.join(data,'runtime.log'),'a');
-  runtime=spawn(executable,args,{windowsHide:true,env:{...process.env,LECTURE_TOKEN:token},stdio:['ignore',log,log]});
+  const defaultModel=process.platform==='darwin'&&os.totalmem()<12*1024**3?'qwen3.5:2b':'qwen3.5:4b';
+  runtime=spawn(executable,args,{windowsHide:true,env:{...process.env,LECTURE_TOKEN:token,LECTURE_DEFAULT_LLM:defaultModel},stdio:['ignore',log,log]});
   let failed;
   runtime.once('error',error=>{failed=error});
   runtime.once('exit',code=>{if(!stopping){failed=new Error('本机服务已退出，错误码 '+code+'。请查看 '+path.join(data,'runtime.log'));if(window){dialog.showErrorBox('本机服务已停止',failed.message);app.quit()}}});

@@ -8,7 +8,7 @@ const fs=require('node:fs');
   const app=await _electron.launch({executablePath:process.env.LECTURE_APP_EXE||require('electron'),args:process.env.LECTURE_APP_EXE?[]:[root],env:{...process.env,HF_HUB_OFFLINE:'1',LECTURE_TEST_DATA:data}});
   const page=await app.firstWindow();const errors=[];page.on('pageerror',e=>errors.push(e.message));
   try{
-    await page.waitForFunction(()=>document.querySelector('#courseSelect')?.options.length>0&&$('reliabilityStatus').textContent.includes('首次'),{timeout:30000});
+    await page.waitForFunction(()=>document.querySelector('#courseSelect')?.options.length>0&&$('reliabilityStatus').textContent.includes('首次'),null,{timeout:60000});
     console.log('desktop booted');
     if(process.env.LECTURE_TEST_MODEL){await page.evaluate(async model=>{const response=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json','X-Lecture-Token':window.localToken},body:JSON.stringify({llm_model:model})});if(!response.ok)throw Error('Unable to select test model')},process.env.LECTURE_TEST_MODEL)}
     if(process.env.LECTURE_ASR_VERIFY==='1'){
@@ -28,7 +28,7 @@ const fs=require('node:fs');
     await page.evaluate(()=>{$('title').value='Week 1 · Opportunity cost';items=[{text:'Opportunity cost is the value of the next best alternative forgone.',translation:'机会成本是放弃的次佳选择的价值。',time:'00:00',code:'en-US',lang:'英语'}];render();});
     await page.evaluate(()=>window.localFlush());
     console.log('lecture saved');
-    await page.locator('#summarize').click();await page.waitForFunction(()=>!$('summarize').dataset.busy,{timeout:1200000});
+    await page.locator('#summarize').click();await page.waitForFunction(()=>!$('summarize').dataset.busy,null,{timeout:1200000});
     const result=await page.evaluate(()=>({summary:summaryData,message:$('toast').textContent}));assert.ok(result.summary?.overview,JSON.stringify(result));
     console.log('summary rendered');
     await page.locator('#summaryPane > details > summary').click();await page.locator('#summaryFeedback').fill('Compare opportunity cost and sunk cost; retain definitions.');await page.locator('#saveSummaryFeedback').click();await page.waitForFunction(()=>$('learningStatus').textContent.includes('1 条总结建议'));

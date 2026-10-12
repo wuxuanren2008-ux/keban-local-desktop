@@ -5,6 +5,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+defaults:
+  run:
+    shell: bash
 jobs:
   native-mac:
     strategy:
@@ -50,7 +53,7 @@ jobs:
           .venv/bin/python -m pip freeze > test-results/native-dependencies.txt
       - name: Runtime and platform tests
         run: |
-          .venv/bin/python -m pytest tests/test_local_runtime.py -q | tee test-results/runtime-tests.txt
+          .venv/bin/python -m pytest tests/test_local_runtime.py tests/test_macos_runtime.py -q | tee test-results/runtime-tests.txt
           npm test | tee test-results/frontend-tests.txt
       - name: Build native application and DMG
         run: bash scripts/build-macos.sh --skip-install
@@ -63,16 +66,8 @@ jobs:
           /usr/libexec/PlistBuddy -c 'Print NSMicrophoneUsageDescription' "$APP/Contents/Info.plist" >> test-results/codesign.txt
       - name: Prepare local Ollama and models
         run: |
-          mkdir -p .tools/ollama
-          curl -fL --retry 3 https://github.com/ollama/ollama/releases/download/v0.40.3/ollama-darwin.tgz -o .tools/ollama-darwin.tgz
-          curl -fL --retry 3 https://github.com/ollama/ollama/releases/download/v0.40.3/sha256sum.txt -o .tools/ollama-checksums.txt
-          grep 'ollama-darwin.tgz$' .tools/ollama-checksums.txt > .tools/ollama-checksum.txt
-          (cd .tools && shasum -a 256 -c ollama-checksum.txt)
-          tar -xzf .tools/ollama-darwin.tgz -C .tools/ollama
-          chmod +x .tools/ollama/ollama
-          .tools/ollama/ollama serve > test-results/ollama.log 2>&1 &
-          for attempt in $(seq 1 60); do curl -sf http://127.0.0.1:11434/api/tags >/dev/null && break; sleep 1; done
-          .tools/ollama/ollama pull '${{ matrix.model }}'
+          node scripts/prepare-native-ollama.cjs
+          test-results/native-model-environment/ollama/ollama pull '${{ matrix.model }}'
           .venv/bin/python -c "from faster_whisper import WhisperModel; WhisperModel('small',device='cpu',compute_type='int8'); print('Native Whisper loaded')"
           say -v Samantha -o test-results/synthetic-economics.aiff 'Opportunity cost is the value of the next best alternative forgone. Scarce resources require choices.'
           .venv/bin/python scripts/prepare-ci-audio.py
@@ -82,7 +77,8 @@ jobs:
           export LECTURE_APP_EXE="$PWD/$APP/Contents/MacOS/课伴macOS"
           export LECTURE_ASR_VERIFY=1
           export LECTURE_TEST_MODEL='${{ matrix.model }}'
-          node scripts/desktop-smoke.cjs | tee test-results/packaged-smoke.txt
+          node scripts/desktop-smoke.cjs 2>&1 | tee test-results/packaged-smoke.txt
+          grep '^PASS:' test-results/packaged-smoke.txt
       - name: Release checksums
         run: |
           (cd release && shasum -a 256 *.dmg *.zip > SHA256SUMS-${{ matrix.arch }}.txt)
