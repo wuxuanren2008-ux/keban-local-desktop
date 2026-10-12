@@ -26,7 +26,7 @@ TXT、Markdown、DOCX、PPTX 在本机提取文字；PDF 在本机提取可选�
 
 ## 数据位置与备份
 
-Windows 应用资料位于 `%APPDATA%/课伴/classroom-data`（设置中显示实际路径）。SQLite 保存课堂文字与总结，audio 目录保存录音。软件卸载不主动删除学习资料。可导出课堂 JSON、字幕、讲义与导图；完整迁移时先正常退出，再备份整个 classroom-data 目录。文件学习结果另保存在桌面应用的 IndexedDB 中，迁移请导出其 JSON，或备份整个应用 userData 目录。
+Windows 应用资料位于 `%APPDATA%/lecture-companion-desktop/classroom-data`（设置中显示实际路径）。SQLite 保存课堂文字与总结，audio 目录保存录音。软件卸载不主动删除学习资料。可导出课堂 JSON、字幕、讲义与导图；完整迁移时先正常退出，再备份整个 classroom-data 目录。文件学习结果另保存在桌面应用的 IndexedDB 中，迁移请导出其 JSON，或备份整个应用 userData 目录。
 
 模型文件在 Ollama 与 Hugging Face 的用户缓存目录中，源码仓库和安装程序不附带模型权重或个人课程数据。
 

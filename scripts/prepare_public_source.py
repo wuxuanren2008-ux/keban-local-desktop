@@ -21,7 +21,7 @@ for source in (root / 'desktop').iterdir():
         target = output / source.relative_to(root)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
-for name in ['build-desktop.ps1', 'prepare_desktop.py', 'desktop-smoke.cjs', 'verify_models.py', 'generate_icon.py', 'prepare_public_source.py']:
+for name in ['build-desktop.ps1', 'prepare_desktop.py', 'desktop-smoke.cjs', 'verify_models.py', 'generate_icon.py', 'prepare_public_source.py', 'fix-nsis.cjs']:
     target = output / 'scripts' / name
     target.parent.mkdir(exist_ok=True)
     shutil.copy2(root / 'scripts' / name, target)

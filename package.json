@@ -1,14 +1,18 @@
 {
   "name": "lecture-companion-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "课伴：本机课堂转写、翻译、学术总结与思维导图",
   "main": "desktop/main.cjs",
   "author": "Lecture Companion contributors",
   "license": "MIT",
-  "dependencies": {"extract-zip": "2.0.1"},
+  "dependencies": {
+    "extract-zip": "2.0.1"
+  },
   "scripts": {
     "start": "electron .",
+    "prepack": "node scripts/fix-nsis.cjs",
     "pack": "electron-builder --dir",
+    "predist": "node scripts/fix-nsis.cjs",
     "dist": "electron-builder --win nsis portable",
     "test": "node --test tests/local-frontend.test.cjs"
   },
@@ -20,15 +24,43 @@
   "build": {
     "appId": "win.lecturenotes.desktop",
     "productName": "课伴",
-    "directories": {"output": "release"},
-    "files": ["desktop/main.cjs", "desktop/preload.cjs", "desktop/model-setup.cjs", "package.json"],
-    "extraResources": [
-      {"from": "build/runtime/lecture-runtime", "to": "runtime"},
-      {"from": "desktop/web", "to": "web"}
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "desktop/main.cjs",
+      "desktop/preload.cjs",
+      "desktop/model-setup.cjs",
+      "package.json"
     ],
-    "win": {"icon": "desktop/icon.ico", "target": ["nsis", "portable"]},
-    "nsis": {"artifactName": "LectureCompanion-${version}-win-${arch}-setup.${ext}", "oneClick": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true, "shortcutName": "课伴", "deleteAppDataOnUninstall": false},
-    "portable": {"artifactName": "LectureCompanion-${version}-win-${arch}-portable.${ext}"},
+    "extraResources": [
+      {
+        "from": "build/runtime/lecture-runtime",
+        "to": "runtime"
+      },
+      {
+        "from": "desktop/web",
+        "to": "web"
+      }
+    ],
+    "win": {
+      "icon": "desktop/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "artifactName": "LectureCompanion-${version}-win-${arch}-setup.${ext}",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "课伴",
+      "deleteAppDataOnUninstall": false
+    },
+    "portable": {
+      "artifactName": "LectureCompanion-${version}-win-${arch}-portable.${ext}"
+    },
     "publish": null
   }
 }
