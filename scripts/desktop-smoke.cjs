@@ -30,7 +30,11 @@ const fs=require('node:fs');
     if(process.env.LECTURE_CAPTURE_VERIFY==='1'){
       await page.locator('#title').fill('Synthetic recorded classroom');await page.locator('#start').click();
       await page.waitForFunction(()=>active&&recorder?.state==='recording',null,{timeout:30000});
-      await page.waitForTimeout(12000);await page.locator('#stop').click();
+      await page.waitForFunction(()=>recognition?.node,null,{timeout:30000});
+      await page.evaluate(()=>{const rec=recognition;rec.captureStats={packets:0,bytes:0,peak:0};const handle=rec.node.port.onmessage;rec.node.port.onmessage=event=>{if(event.data instanceof ArrayBuffer){rec.captureStats.packets++;rec.captureStats.bytes+=event.data.byteLength;for(const sample of new Float32Array(event.data))rec.captureStats.peak=Math.max(rec.captureStats.peak,Math.abs(sample))}handle(event)}});
+      await page.waitForTimeout(12000);
+      console.log('Capture diagnostics',await page.evaluate(()=>({context:recognition.context?.state,sampleRate:recognition.context?.sampleRate,ready:recognition.ready,sequence:recognition.sequence,stats:recognition.captureStats,track:recognition.stream.getAudioTracks()[0]?.getSettings(),recording:recorder.state,items:items.length})));
+      await page.locator('#stop').click();
       await page.waitForFunction(()=>!recognition?.closing&&items.length>0&&items.every(x=>!x._translating),null,{timeout:300000});
       const recording=await page.evaluate(async()=>{await window.localFlush();const response=await fetch('/api/lectures/'+studioId,{headers:{'X-Lecture-Token':window.localToken}});const row=await response.json();const audio=await fetch('/api/lectures/'+studioId+'/audio',{headers:{'X-Lecture-Token':window.localToken}});return{saved:row.hasAudio,bytes:(await audio.arrayBuffer()).byteLength,text:items.map(x=>x.text).join(' ')}});
       assert.ok(recording.saved&&recording.bytes>1000,JSON.stringify(recording));assert.ok(recording.text.toLowerCase().includes('opportunity cost'),recording.text);

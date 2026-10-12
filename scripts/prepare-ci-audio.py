@@ -8,6 +8,8 @@ audio = root / 'test-results/synthetic-economics.wav'
 if not audio.exists():
     audio = root / 'test-results/synthetic-economics.aiff'
 decode_audio(str(audio), sampling_rate=16000).astype('<f4').tofile(root / 'test-results/synthetic-economics.raw')
+samples_for_stats=decode_audio(str(audio),sampling_rate=16000)
+print('Synthetic audio:', len(samples_for_stats)/16000, 'seconds; peak', float(np.max(np.abs(samples_for_stats))))
 with wave.open(str(root / 'test-results/fake-microphone.wav'), 'wb') as output:
     output.setnchannels(1)
     output.setsampwidth(2)
