@@ -1,7 +1,7 @@
 {
-  "name": "lecture-companion-desktop",
-  "version": "0.1.1",
-  "description": "课伴：本机课堂转写、翻译、学术总结与思维导图",
+  "name": "lecture-companion-macos",
+  "version": "0.2.0",
+  "description": "课伴 macOS 本地端：Apple Silicon 与 Intel，Whisper + 本机 LLM",
   "main": "desktop/main.cjs",
   "author": "Lecture Companion contributors",
   "license": "MIT",
@@ -14,16 +14,18 @@
     "pack": "electron-builder --dir",
     "predist": "node scripts/fix-nsis.cjs",
     "dist": "electron-builder --win nsis portable",
-    "test": "node --test tests/local-frontend.test.cjs"
+    "test": "node --test tests/*.test.cjs",
+    "dist:mac": "electron-builder --mac dmg zip",
+    "pack:mac": "electron-builder --mac --dir"
   },
   "devDependencies": {
-    "electron": "41.0.2",
+    "electron": "41.10.7",
     "electron-builder": "26.8.2",
     "playwright-core": "1.58.2"
   },
   "build": {
-    "appId": "win.lecturenotes.desktop",
-    "productName": "课伴",
+    "appId": "win.lecturenotes.desktop.macos",
+    "productName": "课伴macOS",
     "directories": {
       "output": "release"
     },
@@ -31,7 +33,8 @@
       "desktop/main.cjs",
       "desktop/preload.cjs",
       "desktop/model-setup.cjs",
-      "package.json"
+      "package.json",
+      "desktop/platform.cjs"
     ],
     "extraResources": [
       {
@@ -61,6 +64,24 @@
     "portable": {
       "artifactName": "LectureCompanion-${version}-win-${arch}-portable.${ext}"
     },
-    "publish": null
+    "publish": null,
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "desktop/icon.icns",
+      "category": "public.app-category.education",
+      "minimumSystemVersion": "14.0.0",
+      "identity": "-",
+      "hardenedRuntime": true,
+      "entitlements": "desktop/entitlements.mac.plist",
+      "entitlementsInherit": "desktop/entitlements.mac.plist",
+      "artifactName": "LectureCompanion-macOS-${version}-${arch}.${ext}",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "课伴使用麦克风录制课堂，并在本机生成字幕和译文。",
+        "NSAppleEventsUsageDescription": "课伴只处理本机课堂资料。"
+      }
+    }
   }
 }

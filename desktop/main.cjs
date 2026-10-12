@@ -1,5 +1,6 @@
 'use strict';
-const {app, BrowserWindow, dialog, shell, session, ipcMain} = require('electron');
+const {app, BrowserWindow, dialog, shell, session, ipcMain,Menu,systemPreferences} = require('electron');
+const {platformPaths,sameOrigin}=require('./platform.cjs');
 const setup=require('./model-setup.cjs');
 const {spawn} = require('node:child_process');
 const {randomBytes} = require('node:crypto');
@@ -18,13 +19,17 @@ async function start(){
   const root=path.resolve(__dirname,'..');
   const data=path.join(app.getPath('userData'),'classroom-data');
   fs.mkdirSync(data,{recursive:true});
+  if(process.platform==='darwin'&&Number(process.getSystemVersion().split('.')[0])<14)throw Error('课伴 macOS 版需要 macOS Sonoma 14 或更新版本。');
+  const paths=platformPaths({root,resourcesPath:process.resourcesPath,isPackaged:app.isPackaged,dataDir:data});
   await setup.startInstalled(data,app.isPackaged?null:root);
   const trusted=event=>{if(event.senderFrame?.url.split('#')[0].startsWith(origin+'/')!==true)throw Error('Only the local classroom may prepare models')};
   ipcMain.handle('lecture:install-ollama',async event=>{trusted(event);return setup.install(data)});
   ipcMain.handle('lecture:setup-progress',event=>{trusted(event);return setup.progress()});
-  const executable=app.isPackaged?path.join(process.resourcesPath,'runtime','lecture-runtime.exe'):path.join(root,'.venv','Scripts','python.exe');
-  const web=app.isPackaged?path.join(process.resourcesPath,'web'):path.join(root,'desktop','web');
-  const args=app.isPackaged?[]:[path.join(root,'desktop','launcher.py')];
+  ipcMain.handle('lecture:platform',event=>{trusted(event);return{platform:process.platform,arch:process.arch,supportedAsrDevices:paths.supportedAsrDevices}});
+  ipcMain.handle('lecture:microphone',async event=>{trusted(event);if(process.platform!=='darwin')return true;const current=systemPreferences.getMediaAccessStatus('microphone');return current==='granted'||(current==='not-determined'&&await systemPreferences.askForMediaAccess('microphone'))});
+  const executable=paths.executable;
+  const web=paths.web;
+  const args=paths.args;
   args.push('--web-dir',web,'--data-dir',data,'--port','8766');
   const log=fs.openSync(path.join(data,'runtime.log'),'a');
   runtime=spawn(executable,args,{windowsHide:true,env:{...process.env,LECTURE_TOKEN:token},stdio:['ignore',log,log]});
@@ -42,13 +47,14 @@ async function start(){
     const same=contents.getURL().startsWith(origin+'/');
     callback(same&&permission==='media'&&(!details.mediaTypes||details.mediaTypes.every(x=>x==='audio')));
   });
-  session.defaultSession.setPermissionCheckHandler((contents,permission,requestingOrigin)=>permission==='media'&&requestingOrigin===origin);
+  session.defaultSession.setPermissionCheckHandler((contents,permission,requestingOrigin,details)=>permission==='media'&&details.mediaType!=='video'&&sameOrigin(details.securityOrigin||requestingOrigin,origin));
   // No classroom content may leave the local runtime through the renderer.
   session.defaultSession.webRequest.onBeforeRequest((details,callback)=>{
     const protocol=new URL(details.url).protocol;
     callback({cancel: !details.url.startsWith(origin+'/') && !details.url.startsWith('ws://127.0.0.1:8766/') && !['data:','blob:','devtools:'].includes(protocol)});
   });
   window=new BrowserWindow({width:1440,height:960,minWidth:850,minHeight:650,backgroundColor:'#f5f7f4',title:'课伴',show:false,webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,backgroundThrottling:false}});
+  if(process.platform==='darwin')Menu.setApplicationMenu(Menu.buildFromTemplate([{label:'课伴',submenu:[{role:'about'},{type:'separator'},{role:'quit'}]},{label:'编辑',submenu:[{role:'undo'},{role:'redo'},{type:'separator'},{role:'cut'},{role:'copy'},{role:'paste'},{role:'selectAll'}]},{label:'窗口',submenu:[{role:'minimize'},{role:'zoom'}]}]));
   window.webContents.setWindowOpenHandler(({url})=>{if(url.startsWith('https://github.com/')||url.startsWith('https://ollama.com/'))shell.openExternal(url);return{action:'deny'}});
   window.webContents.on('will-navigate',(event,url)=>{if(!url.startsWith(origin+'/'))event.preventDefault()});
   window.once('ready-to-show',()=>window.show());
