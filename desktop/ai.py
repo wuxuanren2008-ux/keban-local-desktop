@@ -19,7 +19,7 @@ TIMEOUT_DEFAULT = httpx.Timeout(connect=5, read=300, write=10, pool=5)
 TIMEOUT_SUMMARY = httpx.Timeout(connect=5, read=600, write=10, pool=5)
 
 # Whitelist of allowed local models — no cloud models permitted
-ALLOWED_MODELS = {"qwen3.5:4b", "qwen3.5:9b", "qwen3:8b", "gemma3:4b"}
+ALLOWED_MODELS = {"qwen3.5:0.8b", "qwen3.5:2b", "qwen3.5:4b", "qwen3.5:9b", "qwen3:8b", "gemma3:4b"}
 
 
 class OllamaError(Exception):
@@ -107,7 +107,7 @@ class OllamaClient:
             raise OllamaError(f"Model '{model}' not in allowed list: {ALLOWED_MODELS}")
         if len(prompt) + len(system) > 7000:
             raise OllamaError('Input exceeds the local context budget; split the material into smaller sections. No content was silently truncated.')
-        options: dict[str, Any] = {"temperature": temperature, "num_ctx": 16384, "num_predict": 1800}
+        options: dict[str, Any] = {"temperature": temperature, "num_ctx": 8192 if model in {'qwen3.5:0.8b','qwen3.5:2b'} else 16384, "num_predict": 1800}
         payload: dict[str, Any] = {
             "model": model,
             "prompt": prompt,

@@ -16,6 +16,7 @@ import logging
 import os
 import secrets
 import struct
+import sys
 import tempfile
 import uuid
 from pathlib import Path
@@ -185,6 +186,8 @@ def create_app(data_dir: Path, web_dir: Path, token: str) -> FastAPI:
         if "asr_model" in body:
             updates["asr_model"] = str(body["asr_model"])
         if "asr_device" in body:
+            if sys.platform == 'darwin' and body['asr_device'] != 'cpu':
+                raise HTTPException(400, 'macOS Whisper uses CPU; Apple GPU acceleration is provided by Ollama for the LLM')
             updates["asr_device"] = str(body["asr_device"])
         if "learning_enabled" in body:
             updates["learning_enabled"] = "true" if body["learning_enabled"] else "false"

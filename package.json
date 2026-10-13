@@ -1,6 +1,6 @@
 {
   "name": "lecture-companion-desktop",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "课伴：本机课堂转写、翻译、学术总结与思维导图",
   "main": "desktop/main.cjs",
   "author": "Lecture Companion contributors",
@@ -14,10 +14,10 @@
     "pack": "electron-builder --dir",
     "predist": "node scripts/fix-nsis.cjs",
     "dist": "electron-builder --win nsis portable",
-    "test": "node --test tests/local-frontend.test.cjs"
+    "test": "node --test tests/*.test.cjs"
   },
   "devDependencies": {
-    "electron": "41.0.2",
+    "electron": "41.10.7",
     "electron-builder": "26.8.2",
     "playwright-core": "1.58.2"
   },
@@ -31,7 +31,12 @@
       "desktop/main.cjs",
       "desktop/preload.cjs",
       "desktop/model-setup.cjs",
-      "package.json"
+      "package.json",
+      "desktop/platform.cjs",
+      "desktop/system-capture.cjs",
+      "desktop/subtitle-window.cjs",
+      "desktop/subtitle-preload.cjs",
+      "desktop/subtitle.html"
     ],
     "extraResources": [
       {

@@ -3,13 +3,17 @@ class LocalRecognition {
   constructor(stream){this.stream=stream;this.generation=0;this.results=[];this.running=false;this.closing=false}
   start(){if(this.running)return;if(this.closing){this.resumeRequested=true;return}this.running=true;this._captionClosing=false;this.results=[];this.seen=new Set();this.sequence=-1;const generation=++this.generation;this.connect(generation).catch(e=>this.fail(e.message))}
   async connect(generation){
-    const context=this.context=new AudioContext();await context.audioWorklet.addModule('asr-worklet.js');
+    const context=this.context=new AudioContext();
+    // Recognition needs an advancing audio graph, not a physical speaker device.
+    // This also works in native macOS VMs without a configured audio output.
+    if(typeof context.setSinkId==='function')await context.setSinkId({type:'none'});
+    await context.audioWorklet.addModule('asr-worklet.js');
     if(generation!==this.generation){await context.close();return}
     this.audioOffset=Math.max(0,(Date.now()-startedAt)/1000);this.pending=[];this.pendingBytes=0;
     this.source=context.createMediaStreamSource(this.stream);this.node=new AudioWorkletNode(context,'lecture-pcm');const silence=context.createGain();silence.gain.value=0;this.source.connect(this.node);this.node.connect(silence);silence.connect(context.destination);
     const url=new URL('/v1/stream',location.origin);url.protocol='ws:';url.searchParams.set('token',window.localToken);
     const socket=this.socket=new WebSocket(url);
-    socket.onopen=()=>socket.send(JSON.stringify({type:'start',sample_rate:16000,language:this.lang?.startsWith('ms')?'ms':'en',course_id:window.localCourseId}));
+    socket.onopen=()=>socket.send(JSON.stringify({type:'start',sample_rate:16000,language:this.lang?.startsWith('ms')?'ms':this.lang?.startsWith('zh')?'zh':'en',course_id:window.localCourseId}));
     this.node.port.onmessage=event=>{
       if(generation!==this.generation)return;
       if(event.data?.type==='flushed'){if(socket.readyState===WebSocket.OPEN){for(const packet of this.pending)socket.send(packet);this.pending=[];socket.send(JSON.stringify({type:'stop'}))}this.cleanupAudio();return}

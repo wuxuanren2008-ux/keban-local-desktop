@@ -8,6 +8,7 @@ import datetime
 import json
 import os
 import sqlite3
+import os
 import uuid
 from pathlib import Path
 from typing import Any
@@ -95,7 +96,7 @@ class Storage:
                 """
             )
             defaults = {
-                "llm_model": "qwen3.5:4b",
+                "llm_model": os.environ.get('LECTURE_DEFAULT_LLM', 'qwen3.5:4b') if os.environ.get('LECTURE_DEFAULT_LLM', 'qwen3.5:4b') in {'qwen3.5:2b', 'qwen3.5:4b'} else 'qwen3.5:4b',
                 "asr_model": "small",
                 "asr_device": "cpu",
                 "learning_enabled": "true",

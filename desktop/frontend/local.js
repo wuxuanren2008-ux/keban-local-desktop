@@ -20,7 +20,7 @@
   // Used by the Electron close handler and automated checks; it never exports text.
   window.localFlush=async()=>{archiveCurrent();await saveQueue};
   window.localBeforeClose=async()=>{
-    if(studioStarting)throw Error('麦克风仍在启动，请稍候再关闭。');
+    if(studioStarting||window.localCaptureBusy)throw Error('声音采集仍在启动，请稍候再关闭。');
     const audio=recorder&&['recording','paused'].includes(recorder.state)?new Promise(resolve=>recorder.addEventListener('stop',resolve,{once:true})):Promise.resolve();
     if(active)stop();
     const drain=recognition?.drained||Promise.resolve();
@@ -51,7 +51,7 @@
   saveGlossary=async function(item,value){
     if(!value?.trim())return toast('请输入确认的译文。');
     const course=window.localCourseId,id=studioId;
-    try{await post('corrections',{course_id:course,source_term:item.text.trim(),preferred_translation:value.trim(),source_language:item.code?.startsWith('ms')?'ms':'en',target_language:$('target').value});if(course!==window.localCourseId||id!==studioId)return;item.translation=value.trim();item.user_corrected=true;await refreshGlossary();render();await learningStatus();toast('已确认修正；该课程今后的翻译会参考它。')}catch(e){toast(e.message)}
+    try{await post('corrections',{course_id:course,source_term:item.text.trim(),preferred_translation:value.trim(),source_language:item.code?.startsWith('ms')?'ms':item.code?.startsWith('zh')?'zh':'en',target_language:$('target').value});if(course!==window.localCourseId||id!==studioId)return;item.translation=value.trim();item.user_corrected=true;await refreshGlossary();render();await learningStatus();toast('已确认修正；该课程今后的翻译会参考它。')}catch(e){toast(e.message)}
   };
   const localRender=render;
   render=function(){
@@ -78,7 +78,7 @@
     item._translating=true;
     try{
       if(translationBusyLocal>=1)await new Promise(resolve=>waiters.push(resolve));else translationBusyLocal++;
-      try{if(!valid())return;const data=await post('ai',{operation:'translate_lecture',course_id:course,text,source:item.code?.startsWith('ms')?'ms':'en',target},AbortSignal.timeout(300000));if(valid())item.translation=data.translation}
+      try{if(!valid())return;const data=await post('ai',{operation:'translate_lecture',course_id:course,text,source:item.code?.startsWith('ms')?'ms':item.code?.startsWith('zh')?'zh':'en',target},AbortSignal.timeout(300000));if(valid())item.translation=data.translation}
       finally{const next=waiters.shift();if(next)next();else translationBusyLocal--}
     }catch(error){if(valid())item.translation='（翻译暂不可用：'+error.message+'）'}
     finally{item._translating=false;if(studioId===id&&items.includes(item)){if((target!==$('target').value||text!==item.text)&&!item.user_corrected)translate(item);render()}}
@@ -128,11 +128,11 @@
   };
   refreshCloudLibrary=async function(){if(!booted)return;try{await saveQueue;records=(await api('lectures')).lectures||[];renderLibrary();$('libraryStatus').textContent='本机课程资料库 · '+records.filter(x=>x.course_id===window.localCourseId).length+' 节课堂'}catch(error){$('libraryStatus').textContent=error.message}};
   openLecture=async function(id){
-    if(active||studioStarting||recognition?.closing)return toast('请先结束课堂并等待尾句确认。');
+    if(active||studioStarting||window.localCaptureBusy||recognition?.closing)return toast('请先结束课堂并等待尾句确认。');
     try{archiveCurrent();await saveQueue;const row=await api('lectures/'+encodeURIComponent(id));clearTimeout(studioCheckpointTimer);studioId=row.id;studioCreated=row.created_at;window.localCourseId=row.course_id;localStorage.setItem('lc_desktop_course',row.course_id);$('courseSelect').value=row.course_id;items=row.transcript||[];summaryData=row.summary||null;map=row.mindmap||null;qualityRun=null;currentCloudId=null;$('title').value=row.title||'';$('personalNotes').value=row.notes||'';$('source').value=row.language||'en-US';$('target').value=row.target||'zh-CN';$('duration').textContent=row.duration||'00:00';applyPreferences();$('summaryBox').classList.toggle('hidden',!summaryData);document.querySelector('.assistant-intro').classList.toggle('hidden',!!summaryData);if(summaryData)showSummary(summaryData);else renderReview();attachAudio(null);const current=id;const blob=await readAudio('desktop',id);if(studioId!==current)return;attachAudio(blob);showView('classroom');$('sessionLabel').textContent='课堂回顾 · '+new Date(row.created_at).toLocaleString();render();renderMap();await refreshGlossary()}catch(error){toast('打开失败：'+error.message)}
   };
   function clearClass(){clearTimeout(studioCheckpointTimer);studioId=crypto.randomUUID();studioCreated=new Date().toISOString();items=[];map=null;summaryData=null;qualityRun=null;currentCloudId=null;$('title').value='';$('personalNotes').value='';$('duration').textContent='00:00';$('summaryBox').classList.add('hidden');document.querySelector('.assistant-intro').classList.remove('hidden');attachAudio(null);render();renderReview();renderMap()}
-  $('newClass').onclick=async()=>{if(active||studioStarting||recognition?.closing)return toast('请先结束课堂并等待尾句。');try{await window.localFlush();clearClass();showView('classroom')}catch(e){toast(e.message)}};
+  $('newClass').onclick=async()=>{if(active||studioStarting||window.localCaptureBusy||recognition?.closing)return toast('请先结束课堂并等待尾句。');try{await window.localFlush();clearClass();showView('classroom')}catch(e){toast(e.message)}};
   $('cloudSave').onclick=async()=>{try{await window.localFlush();toast('已保存到本机课程资料库。')}catch(e){toast(e.message)}};
   $('cloudLoad').onclick=()=>showView('library');$('refreshLibrary').onclick=refreshCloudLibrary;
   $('cloudDelete').classList.add('hidden');$('libraryScope').classList.add('hidden');$('openAccount').classList.add('hidden');$('assistantLogin').classList.add('hidden');
@@ -153,13 +153,14 @@
   recordingCheck=function(){if(!booted)return '本机资料库正在连接，请稍候。';if(!navigator.mediaDevices?.getUserMedia||!window.AudioWorkletNode||!window.MediaRecorder)return '当前环境无法访问麦克风，请通过桌面软件打开课伴。';return ''};
   // Prevent an old classroom's map from carrying into the new recording.
   const originalStartLocal=start;
-  start=async function(){if(!booted||recognition?.closing)return toast('正在准备本机服务或确认尾句，请稍候。');const previousId=studioId;await originalStartLocal();if(studioId!==previousId){map=null;renderMap();archiveCurrent()}$('courseSelect').disabled=active;$('addCourse').disabled=active};$('start').onclick=start;
+  start=async function(preparedStream){if(!booted||recognition?.closing)return toast('正在准备本机服务或确认尾句，请稍候。');if(!preparedStream&&window.localPlatform?.platform==='darwin'&&window.desktopSetup&&!await window.desktopSetup.requestMicrophone())return toast('麦克风权限未开启，请在 macOS 系统设置的隐私与安全性 → 麦克风中允许课伴。');const previousId=studioId;await originalStartLocal(preparedStream);if(studioId!==previousId){map=null;renderMap();archiveCurrent()}$('courseSelect').disabled=active;$('addCourse').disabled=active};$('start').onclick=()=>start();
   const originalStopLocal=stop;
   stop=function(){originalStopLocal();$('courseSelect').disabled=false;$('addCourse').disabled=false;reliabilityNotice('录音已保留，正在确认尾句；字幕确认后自动保存。')};$('stop').onclick=stop;
   const originalOpenSettings=$('openSettings').onclick;
   const modelsButton=document.createElement('button');modelsButton.className='btn';modelsButton.textContent='本机模型与学习设置';modelsButton.type='button';modelsButton.onclick=()=>{openModal('localSettings',modelsButton);refreshHealth().catch(e=>$('modelStatus').textContent=e.message)};settingsBody.insertBefore(modelsButton,$('settingsDone'));
   const dialog=document.createElement('dialog');dialog.id='localSettings';dialog.className='modal';dialog.innerHTML='<div class="modal-head"><h2>本机模型与课程学习</h2><button class="close-btn" id="closeLocalSettings" aria-label="关闭">×</button></div><div class="modal-body"><p class="modal-intro">首次下载后在本机运行。模型占用磁盘与内存；按设备能力选择。</p><div class="field"><label for="llmModel">翻译与学术总结</label><select id="llmModel"><option value="qwen3.5:4b">Qwen3.5 4B · 默认</option><option value="qwen3.5:9b">Qwen3.5 9B · 高配</option><option value="qwen3:8b">Qwen3 8B · 兼容选项</option><option value="gemma3:4b">Gemma3 4B · 对比选项</option></select></div><p class="model-hint">4B 建议 16 GB 内存。9B 与 Whisper 同时使用时，需要更多内存或合理分配显存。</p><div class="field"><label for="asrModel">Whisper 识别模型</label><select id="asrModel"><option value="small">small · 普通笔记本</option><option value="base">base · 更轻</option><option value="large-v3-turbo">large-v3-turbo · 更高质量</option><option value="large-v3">large-v3 · 完整模型</option></select></div><div class="field"><label for="asrDevice">识别设备</label><select id="asrDevice"><option value="cpu">CPU · 无需独立显卡</option><option value="cuda">NVIDIA GPU · 需 CUDA/cuDNN</option></select></div><label class="setting-check"><input type="checkbox" id="localLearning" checked>参考本课程中我确认的术语与纠错</label><p class="sub">学习通过术语提示与纠错例改善模型输出。只积累已确认的修正，不自动修改模型权重。</p><div class="local-status" id="modelStatus" role="status" aria-live="polite"></div><div class="local-settings-actions"><button class="btn" id="saveModels">保存设置</button><button class="btn" id="pullModel">下载 LLM</button><button class="btn" id="prepareWhisper">下载 / 准备 Whisper</button></div><div class="local-settings-actions"><button class="btn" id="refreshModels">检查模型</button><button class="btn" id="exportCorrections">导出纠错</button><button class="btn" id="resetLearning">重置本课程学习</button></div><p class="sub">请先安装并启动 <a href="https://ollama.com/download/windows" target="_blank" rel="noopener">Ollama</a>。模型下载需要网络；课文只发送到本机 Ollama。</p></div>';document.body.append(dialog);
   $('closeLocalSettings').onclick=()=>dialog.close();
+  for(const [value,label] of [['qwen3.5:2b','Qwen3.5 2B · 低内存选项'],['qwen3.5:0.8b','Qwen3.5 0.8B · 最轻量']]){const option=document.createElement('option');option.value=value;option.textContent=label;$('llmModel').append(option)}
   $('localLearning').parentElement.lastChild.textContent='启用课程纠错学习（全局开关，资料按课程隔离）';
   const runnerButton=document.createElement('button');runnerButton.id='installRunner';runnerButton.className='btn';runnerButton.textContent='一键准备 Ollama';$('pullModel').parentElement.prepend(runnerButton);
   runnerButton.onclick=async()=>{
@@ -184,6 +185,7 @@
   $('newCourseForm').onsubmit=async event=>{event.preventDefault();const name=$('courseName').value.trim();if(!name)return;$('createCourse').disabled=true;try{await window.localFlush();const course=await post('courses',{name});courses.push(course);window.localCourseId=course.id;localStorage.setItem('lc_desktop_course',course.id);courseOptions();clearClass();window.dispatchEvent(new Event('lecture-course-changed'));await refreshGlossary();await learningStatus();courseDialog.close();$('newCourseForm').reset()}catch(e){toast(e.message)}finally{$('createCourse').disabled=false}};
   $('courseSelect').onchange=async()=>{if(active||recognition?.closing){$('courseSelect').value=window.localCourseId;return toast('请先结束课堂并等待尾句。')}const next=$('courseSelect').value;try{await window.localFlush();window.localCourseId=next;localStorage.setItem('lc_desktop_course',next);clearClass();window.dispatchEvent(new Event('lecture-course-changed'));await refreshGlossary();await learningStatus();renderLibrary()}catch(e){$('courseSelect').value=window.localCourseId;toast(e.message)}};
   async function boot(){
+    if(window.desktopSetup?.platform){window.localPlatform=await window.desktopSetup.platform();if(window.localPlatform.platform==='darwin'){$('asrDevice').querySelector('[value="cuda"]')?.remove();$('asrDevice').value='cpu';$('localSettings').querySelector('a[href*="ollama.com"]').href='https://ollama.com/download/mac';$('asrDevice').selectedOptions[0].textContent='Whisper 使用 CPU；LLM 由 Ollama 调用 Apple GPU（可用时）'}}
     try{courses=(await api('courses')).courses||[];if(!courses.length)courses.push(await post('courses',{name:'未分类课程'}));if(!courses.some(c=>c.id===window.localCourseId))window.localCourseId=courses[0].id;localStorage.setItem('lc_desktop_course',window.localCourseId);courseOptions();records=(await api('lectures')).lectures||[];booted=true;window.dispatchEvent(new Event('lecture-course-changed'));await refreshGlossary();await refreshHealth();updateCount();reliabilityNotice('本机 Whisper 转写与 LLM 翻译；首次请在设置中准备模型。');$('documentConsent').dispatchEvent(new Event('change'))}
     catch(e){$('connectionLabel').textContent='本机服务连接失败';reliabilityNotice('本机服务尚未就绪：'+e.message)}
   }
