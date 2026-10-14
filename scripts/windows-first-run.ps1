@@ -59,7 +59,7 @@ try {
  await window.desktopSetup.installOllama();
  await post('models/pull',{model:'qwen3.5:0.8b'});
  const translated=await post('ai',{operation:'translate_lecture',course_id:window.localCourseId,source:'en',target:'zh-CN',text:'Opportunity cost is the value of the next best alternative forgone.'});
- if(typeof translated.translation!=='string'||!/[\u3400-\u9fff]/.test(translated.translation))throw Error('Local translation returned no Chinese output');
+ if(typeof translated.translation!=='string'||![...translated.translation].some(ch=>ch.codePointAt(0)>=0x3400&&ch.codePointAt(0)<=0x9fff))throw Error('Local translation returned no Chinese output');
  const health=await fetch('/api/health',{headers}).then(r=>r.json());
  if(!health.asr.ready||!health.llm.ready)throw Error('Prepared native models are not ready');
  return {asr:health.asr,llm:health.llm,translation:translated.translation};

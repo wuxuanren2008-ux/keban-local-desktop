@@ -31,9 +31,10 @@ jobs:
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           New-Item -ItemType Directory -Path verification/release -Force | Out-Null
-          gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --pattern '*.exe' --pattern SHA256SUMS.txt --dir verification/release
+          gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --pattern '*.exe' --pattern 'SHA256SUMS*.txt' --dir verification/release
           if($LASTEXITCODE -ne 0){throw 'Published asset download failed'}
-          foreach($line in Get-Content verification/release/SHA256SUMS.txt){$parts=$line -split '\s+',2;$file=Join-Path 'verification/release' $parts[1].Trim();if((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLower() -ne $parts[0]){throw 'Asset hash mismatch'}}
+          $checksumFile=Get-ChildItem verification/release/SHA256SUMS*.txt | Select-Object -First 1
+          foreach($line in Get-Content -LiteralPath $checksumFile.FullName){$parts=$line -split '\s+',2;$file=Join-Path 'verification/release' $parts[1].Trim();if((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLower() -ne $parts[0]){throw 'Asset hash mismatch'}}
           Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,OSArchitecture | ConvertTo-Json | Set-Content verification/platform.json
       - name: Test actual portable wrapper without Python Node Ollama or model paths
         run: |
