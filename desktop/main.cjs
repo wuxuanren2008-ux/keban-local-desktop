@@ -10,19 +10,26 @@ const path = require('node:path');
 const fs = require('node:fs');
 const os=require('node:os');
 const {pathToFileURL}=require('node:url');
+const {selectRuntimePort,waitForRuntime}=require('./startup.cjs');
 if(process.env.LECTURE_TEST_DATA)app.setPath('userData',process.env.LECTURE_TEST_DATA);
 let runtime, window, stopping=false, allowClose=false, closing=false;
-const origin='http://127.0.0.1:8766';
+let origin='';
 const token=randomBytes(32).toString('hex');
 if(!app.requestSingleInstanceLock()){app.quit()}
 else {
   app.on('second-instance',()=>{if(window){window.restore();window.focus()}});
-  app.whenReady().then(start).catch(error=>{dialog.showErrorBox('课伴无法启动', error.message);app.quit()});
+  app.whenReady().then(start).catch(error=>{if(app.startupLog)fs.appendFileSync(app.startupLog,new Date().toISOString()+' startup-failed '+error.stack+'\n');dialog.showErrorBox('课伴无法启动', error.message+(app.startupLog?'\n诊断日志：'+app.startupLog:''));app.quit()});
 }
 async function start(){
   const root=path.resolve(__dirname,'..');
   const data=path.join(app.getPath('userData'),'classroom-data');
   fs.mkdirSync(data,{recursive:true});
+  app.startupLog=path.join(data,'startup.log');
+  const logStartup=message=>fs.appendFileSync(app.startupLog,new Date().toISOString()+' '+message+'\n');
+  logStartup('version='+app.getVersion()+' platform='+process.platform+' arch='+process.arch);
+  const runtimePort=await selectRuntimePort();origin='http://127.0.0.1:'+runtimePort;
+  const socketOrigin='ws://127.0.0.1:'+runtimePort;
+  logStartup('runtime-port='+runtimePort);
   if(process.platform==='darwin'&&Number(process.getSystemVersion().split('.')[0])<14)throw Error('课伴 macOS 版需要 macOS Sonoma 14 或更新版本。');
   const paths=platformPaths({root,resourcesPath:process.resourcesPath,isPackaged:app.isPackaged,dataDir:data});
   await setup.startInstalled(data,app.isPackaged?null:root);
@@ -34,20 +41,15 @@ async function start(){
   const executable=paths.executable;
   const web=paths.web;
   const args=paths.args;
-  args.push('--web-dir',web,'--data-dir',data,'--port','8766');
+  args.push('--web-dir',web,'--data-dir',data,'--port',String(runtimePort));
   const log=fs.openSync(path.join(data,'runtime.log'),'a');
   const defaultModel=process.platform==='darwin'&&os.totalmem()<12*1024**3?'qwen3.5:2b':'qwen3.5:4b';
   runtime=spawn(executable,args,{windowsHide:true,env:{...process.env,LECTURE_TOKEN:token,LECTURE_DEFAULT_LLM:defaultModel},stdio:['ignore',log,log]});
   let failed;
   runtime.once('error',error=>{failed=error});
   runtime.once('exit',code=>{if(!stopping){failed=new Error('本机服务已退出，错误码 '+code+'。请查看 '+path.join(data,'runtime.log'));if(window){dialog.showErrorBox('本机服务已停止',failed.message);app.quit()}}});
-  let ready=false;
-  for(let attempt=0;attempt<90;attempt++){
-    if(failed)throw failed;
-    try{const response=await fetch(origin+'/api/health',{headers:{'X-Lecture-Token':token},signal:AbortSignal.timeout(1000)});if(response.ok){const body=await response.json();if(body.ready){ready=true;break}}}catch{}
-    await new Promise(resolve=>setTimeout(resolve,500));
-  }
-  if(!ready)throw Error('本机服务未能启动。端口 8766 可能已占用，请关闭旧窗口后重试。');
+  const readiness=await waitForRuntime({origin,token,getFailure:()=>failed,onProgress:state=>{if(state.attempts%20===0)logStartup('waiting-runtime elapsed-ms='+state.elapsedMs)}});
+  logStartup('runtime-ready elapsed-ms='+readiness.elapsedMs);
   const capture=installSystemCapture({session:session.defaultSession,desktopCapturer,owner:()=>window,origin,platform:process.platform,version:process.platform==='darwin'?process.getSystemVersion():os.release()});
   ipcMain.handle('lecture:system-capture',event=>capture.arm(event));
   ipcMain.handle('lecture:system-capture-clear',event=>{trusted(event);capture.clear()});
@@ -60,7 +62,7 @@ async function start(){
   session.defaultSession.webRequest.onBeforeRequest((details,callback)=>{
     const protocol=new URL(details.url).protocol;
     const subtitleFile=details.url===pathToFileURL(path.join(__dirname,'subtitle.html')).href;
-    callback({cancel: !subtitleFile && !details.url.startsWith(origin+'/') && !details.url.startsWith('ws://127.0.0.1:8766/') && !['data:','blob:','devtools:'].includes(protocol)});
+    callback({cancel: !subtitleFile && !details.url.startsWith(origin+'/') && !details.url.startsWith(socketOrigin+'/') && !['data:','blob:','devtools:'].includes(protocol)});
   });
   window=new BrowserWindow({width:1440,height:960,minWidth:850,minHeight:650,backgroundColor:'#f5f7f4',title:'课伴',show:false,webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,backgroundThrottling:false}});
   const subtitles=createSubtitleWindow({BrowserWindow,screen,ipcMain,owner:window,origin});
@@ -82,6 +84,7 @@ async function start(){
     });
   });
   await window.loadURL(origin+'/#token='+token);
+  logStartup('classroom-window-loaded');
   // Used only by local automated verification; never enables an external debug port.
   if(process.env.LECTURE_SMOKE_TEST==='1')setTimeout(()=>window.close(),6000);
 }

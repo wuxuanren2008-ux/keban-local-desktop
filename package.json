@@ -1,6 +1,6 @@
 {
   "name": "lecture-companion-desktop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "课伴：本机课堂转写、翻译、学术总结与思维导图",
   "main": "desktop/main.cjs",
   "author": "Lecture Companion contributors",
@@ -36,7 +36,8 @@
       "desktop/system-capture.cjs",
       "desktop/subtitle-window.cjs",
       "desktop/subtitle-preload.cjs",
-      "desktop/subtitle.html"
+      "desktop/subtitle.html",
+      "desktop/startup.cjs"
     ],
     "extraResources": [
       {

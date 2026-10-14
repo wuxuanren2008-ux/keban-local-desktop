@@ -142,6 +142,13 @@ def create_app(data_dir: Path, web_dir: Path, token: str) -> FastAPI:
     # ------------------------------------------------------------------
     # Health
     # ------------------------------------------------------------------
+    @app.get("/api/ready")
+    async def runtime_ready(request: Request):
+        # First launch must work before Ollama/Whisper have been installed.
+        # Keep this authenticated readiness probe independent of model services.
+        _require_auth(request, token)
+        return {"ready": True}
+
     @app.get("/api/health")
     async def health(request: Request):
         _require_auth(request, token)
