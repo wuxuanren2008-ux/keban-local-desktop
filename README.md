@@ -1,5 +1,7 @@
 # 课伴本地端部署
 
+**0.2.1 修复新电脑首次启动失败。** 没有预装 Ollama 或没有下载模型时也可先打开软件，再在设置中准备模型。安装版与免安装版已经在两台独立 Windows x64 虚拟机上通过安装、首启、课程保存和首次 CPU 模型准备测试，见[复测记录](docs/windows-first-run-validation.md)。
+
 [下载 Windows 安装包与免安装版](https://github.com/wuxuanren2008-ux/keban-local-desktop/releases/latest) · [模型选择与证据](docs/local-model-comparison.md)
 
 Whisper + 本机 Qwen，保留网页版界面，增加课程分类、课堂知识导图、原文/译文纠错与总结反馈学习。
