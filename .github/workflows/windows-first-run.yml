@@ -6,6 +6,10 @@ on:
         description: Published desktop release tag
         required: true
         default: desktop-v0.2.0
+      native_models:
+        description: Also prepare and run native models after first launch
+        type: boolean
+        default: false
 permissions:
   contents: read
 defaults:
@@ -34,7 +38,9 @@ jobs:
       - name: Test actual portable wrapper without Python Node Ollama or model paths
         run: |
           $portable=Get-ChildItem verification/release/*portable.exe | Select-Object -First 1
-          ./scripts/windows-first-run.ps1 -Executable $portable.FullName -TestRoot "$PWD/verification/临时目录 空格/portable-first-run" -DebugPort 11741
+          $extra=@{}
+          if('${{ inputs.native_models }}' -eq 'true'){$extra.VerifyNativeModels=$true}
+          ./scripts/windows-first-run.ps1 -Executable $portable.FullName -TestRoot "$PWD/verification/临时目录 空格/portable-first-run" -DebugPort 11741 @extra
       - name: Install published setup in a new directory
         run: |
           $setup=Get-ChildItem verification/release/*setup.exe | Select-Object -First 1

@@ -1,13 +1,13 @@
-param([Parameter(Mandatory=$true)][string]$Executable,[Parameter(Mandatory=$true)][string]$TestRoot,[int]$DebugPort=11741,[switch]$AllowModels)
+param([Parameter(Mandatory=$true)][string]$Executable,[Parameter(Mandatory=$true)][string]$TestRoot,[int]$DebugPort=11741,[switch]$AllowModels,[switch]$VerifyNativeModels)
 $ErrorActionPreference='Stop'
 & (Join-Path $PSScriptRoot 'launch-clean-windows.ps1') -Executable $Executable -TestRoot $TestRoot -DebugPort $DebugPort
 $launch=Get-Content -LiteralPath (Join-Path $TestRoot 'launch.json') -Raw | ConvertFrom-Json
 $connection=$null;$passed=$false;$commandId=0
-function Invoke-CDP([string]$Method,[hashtable]$Parameters) {
+function Invoke-CDP([string]$Method,[hashtable]$Parameters,[int]$TimeoutSeconds=30) {
     $script:commandId++
     $message=@{id=$script:commandId;method=$Method;params=$Parameters}|ConvertTo-Json -Depth 16 -Compress
     $bytes=[Text.Encoding]::UTF8.GetBytes($message)
-    $deadline=[Threading.CancellationTokenSource]::new([TimeSpan]::FromSeconds(30))
+    $deadline=[Threading.CancellationTokenSource]::new([TimeSpan]::FromSeconds($TimeoutSeconds))
     try {
         $connection.SendAsync([ArraySegment[byte]]::new($bytes),[Net.WebSockets.WebSocketMessageType]::Text,$true,$deadline.Token).GetAwaiter().GetResult()
         do {
@@ -21,8 +21,8 @@ function Invoke-CDP([string]$Method,[hashtable]$Parameters) {
         return $response.result
     } finally {$deadline.Dispose()}
 }
-function Invoke-App([string]$Expression) {
-    $result=Invoke-CDP 'Runtime.evaluate' @{expression=$Expression;awaitPromise=$true;returnByValue=$true}
+function Invoke-App([string]$Expression,[int]$TimeoutSeconds=30) {
+    $result=Invoke-CDP 'Runtime.evaluate' @{expression=$Expression;awaitPromise=$true;returnByValue=$true} $TimeoutSeconds
     if($result.exceptionDetails){throw ($result.exceptionDetails|ConvertTo-Json -Depth 5 -Compress)}
     return $result.result.value
 }
@@ -48,6 +48,26 @@ try {
     $image=Invoke-CDP 'Page.captureScreenshot' @{format='png'}
     [IO.File]::WriteAllBytes((Join-Path $TestRoot 'first-run.png'),[Convert]::FromBase64String($image.data))
     [ordered]@{status='PASS';elapsedSeconds=[Math]::Round($watch.Elapsed.TotalSeconds,2);os=[Environment]::OSVersion.VersionString;architecture=$env:PROCESSOR_ARCHITECTURE;app=$Executable;modelsAvailable=$health.llm.ready;asrAvailable=$health.asr.ready;courseArchive=$archive;ui=$boot}|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $TestRoot 'result.json') -Encoding utf8
+    if($VerifyNativeModels){
+        Write-Output 'Fresh startup passed; testing first-time native model preparation'
+        $models=Invoke-App @'
+(async()=>{
+ const headers={'X-Lecture-Token':window.localToken,'Content-Type':'application/json'};
+ async function post(path,body){const r=await fetch('/api/'+path,{method:'POST',headers,body:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(path+': '+JSON.stringify(data));return data}
+ await post('settings',{asr_model:'base',asr_device:'cpu',llm_model:'qwen3.5:0.8b'});
+ await new Promise((resolve,reject)=>{const url=new URL('/v1/stream',location.origin);url.protocol='ws:';url.searchParams.set('token',window.localToken);const socket=new WebSocket(url);let ready=false;const timer=setTimeout(()=>{socket.close();reject(Error('Native Whisper preparation timeout'))},300000);socket.onopen=()=>socket.send(JSON.stringify({type:'start',sample_rate:16000,language:'en',course_id:window.localCourseId}));socket.onmessage=e=>{const msg=JSON.parse(e.data);if(msg.type==='ready'){ready=true;socket.send(JSON.stringify({type:'stop'}))}else if(msg.type==='error'){clearTimeout(timer);socket.close();reject(Error(msg.error||msg.message))}};socket.onerror=()=>{clearTimeout(timer);reject(Error('Native Whisper connection failed'))};socket.onclose=()=>{clearTimeout(timer);ready?resolve():reject(Error('Whisper closed before native model loaded'))}});
+ await window.desktopSetup.installOllama();
+ await post('models/pull',{model:'qwen3.5:0.8b'});
+ const translated=await post('ai',{operation:'translate_lecture',course_id:window.localCourseId,source:'en',target:'zh-CN',text:'Opportunity cost is the value of the next best alternative forgone.'});
+ if(typeof translated.translation!=='string'||!/[\u3400-\u9fff]/.test(translated.translation))throw Error('Local translation returned no Chinese output');
+ const health=await fetch('/api/health',{headers}).then(r=>r.json());
+ if(!health.asr.ready||!health.llm.ready)throw Error('Prepared native models are not ready');
+ return {asr:health.asr,llm:health.llm,translation:translated.translation};
+})()
+'@ 720
+        $models|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $TestRoot 'native-models.json') -Encoding utf8
+        Write-Output 'PASS native models: first-time Whisper CPU load, official Ollama installation, fresh LLM download and real local Chinese translation'
+    }
     $passed=$true;Write-Output 'PASS: actual EXE wrapper, system-only PATH, fresh profile/cache/temp, no preinstalled models, native classroom UI, local archive and authenticated API'
 } catch {
     $_.Exception.Message|Set-Content -LiteralPath (Join-Path $TestRoot 'failure.txt') -Encoding utf8
