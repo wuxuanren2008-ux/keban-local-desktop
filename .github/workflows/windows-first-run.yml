@@ -47,12 +47,16 @@ jobs:
       - name: Install published setup in a new directory
         run: |
           $setup=Get-ChildItem verification/release/*setup.exe | Select-Object -First 1
-          $destination="$PWD/verification/安装目录 空格"
+          $destination=[IO.Path]::GetFullPath((Join-Path $PWD 'verification\安装目录 空格'))
           $installer=Start-Process -FilePath $setup.FullName -ArgumentList '/S',"/D=$destination" -Wait -PassThru
-          if($installer.ExitCode -ne 0 -or -not(Test-Path "$destination/课伴.exe")){throw 'Actual setup installation failed'}
+          $installedExecutable=Join-Path $destination '课伴.exe'
+          $installResult=@{exitCode=$installer.ExitCode;destination=$destination;expectedExecutableExists=(Test-Path -LiteralPath $installedExecutable);defaultExecutableExists=(Test-Path "$env:LOCALAPPDATA/Programs/lecture-companion-desktop/课伴.exe")}
+          $installResult|ConvertTo-Json|Set-Content verification/install-result.json
+          if($installer.ExitCode -ne 0 -or -not $installResult.expectedExecutableExists){throw ('Actual setup installation failed: '+($installResult|ConvertTo-Json -Compress))}
       - name: Test installed application before model preparation
         run: |
-          ./scripts/windows-first-run.ps1 -Executable "$PWD/verification/安装目录 空格/课伴.exe" -TestRoot "$PWD/verification/新资料 安装版" -DebugPort 11742
+          $installedExecutable=Join-Path $PWD 'verification\安装目录 空格\课伴.exe'
+          ./scripts/windows-first-run.ps1 -Executable $installedExecutable -TestRoot "$PWD/verification/新资料 安装版" -DebugPort 11742
       - uses: actions/upload-artifact@v4
         if: always()
         with:
