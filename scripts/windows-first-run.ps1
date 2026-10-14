@@ -9,7 +9,7 @@ function Invoke-CDP([string]$Method,[hashtable]$Parameters,[int]$TimeoutSeconds=
     $bytes=[Text.Encoding]::UTF8.GetBytes($message)
     $deadline=[Threading.CancellationTokenSource]::new([TimeSpan]::FromSeconds($TimeoutSeconds))
     try {
-        $connection.SendAsync([ArraySegment[byte]]::new($bytes),[Net.WebSockets.WebSocketMessageType]::Text,$true,$deadline.Token).GetAwaiter().GetResult()
+        $connection.SendAsync([ArraySegment[byte]]::new($bytes),[Net.WebSockets.WebSocketMessageType]::Text,$true,$deadline.Token).GetAwaiter().GetResult()|Out-Null
         do {
             $buffer=New-Object byte[] 65536;$stream=[IO.MemoryStream]::new()
             try {
@@ -34,7 +34,7 @@ try {
     }
     if(-not $page){throw 'No classroom window after first launch; inspect startup.log/runtime.log'}
     $connection=[Net.WebSockets.ClientWebSocket]::new()
-    $connection.ConnectAsync([Uri]$page.webSocketDebuggerUrl,[Threading.CancellationToken]::None).GetAwaiter().GetResult()
+    $connection.ConnectAsync([Uri]$page.webSocketDebuggerUrl,[Threading.CancellationToken]::None).GetAwaiter().GetResult()|Out-Null
     do {
         $boot=Invoke-App "({courses:document.querySelector('#courseSelect')?.options.length||0,modelControls:!!document.querySelector('#localSettings'),captureControls:!!document.querySelector('#captureSource'),tokenReady:!!window.localToken,status:document.querySelector('#reliabilityStatus')?.textContent||''})"
         if($boot.courses -gt 0 -and $boot.tokenReady){break};Start-Sleep -Milliseconds 400
