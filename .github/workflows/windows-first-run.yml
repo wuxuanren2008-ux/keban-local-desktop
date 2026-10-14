@@ -11,7 +11,9 @@ on:
         type: boolean
         default: false
 permissions:
-  contents: read
+  # GitHub exposes draft release assets only to repository push-capable tokens.
+  # The test downloads them; it never publishes or edits the candidate release.
+  contents: write
 defaults:
   run:
     shell: pwsh
