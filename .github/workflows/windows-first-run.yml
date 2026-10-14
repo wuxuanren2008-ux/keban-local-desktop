@@ -1,0 +1,55 @@
+name: Published Windows first-run verification
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Published desktop release tag
+        required: true
+        default: desktop-v0.2.0
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: pwsh
+jobs:
+  fresh-windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-2022, windows-2025]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download actual published EXEs before installing any app dependencies
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          New-Item -ItemType Directory -Path verification/release -Force | Out-Null
+          gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --pattern '*.exe' --pattern SHA256SUMS.txt --dir verification/release
+          if($LASTEXITCODE -ne 0){throw 'Published asset download failed'}
+          foreach($line in Get-Content verification/release/SHA256SUMS.txt){$parts=$line -split '\s+',2;$file=Join-Path 'verification/release' $parts[1].Trim();if((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLower() -ne $parts[0]){throw 'Asset hash mismatch'}}
+          Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,OSArchitecture | ConvertTo-Json | Set-Content verification/platform.json
+      - name: Test actual portable wrapper without Python Node Ollama or model paths
+        run: |
+          $portable=Get-ChildItem verification/release/*portable.exe | Select-Object -First 1
+          ./scripts/windows-first-run.ps1 -Executable $portable.FullName -TestRoot "$PWD/verification/临时目录 空格/portable-first-run" -DebugPort 11741
+      - name: Install published setup in a new directory
+        run: |
+          $setup=Get-ChildItem verification/release/*setup.exe | Select-Object -First 1
+          $destination="$PWD/verification/安装目录 空格"
+          $installer=Start-Process -FilePath $setup.FullName -ArgumentList '/S',"/D=$destination" -Wait -PassThru
+          if($installer.ExitCode -ne 0 -or -not(Test-Path "$destination/课伴.exe")){throw 'Actual setup installation failed'}
+      - name: Test installed application before model preparation
+        run: |
+          ./scripts/windows-first-run.ps1 -Executable "$PWD/verification/安装目录 空格/课伴.exe" -TestRoot "$PWD/verification/新资料 安装版" -DebugPort 11742
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: first-run-${{ matrix.runner }}-${{ inputs.release_tag }}
+          path: |
+            verification/**/*.json
+            verification/**/*.txt
+            verification/**/*.log
+            verification/**/*.png
